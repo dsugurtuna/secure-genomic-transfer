@@ -6,10 +6,8 @@ of genomic data files.
 
 from __future__ import annotations
 
-import hashlib
 import subprocess
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import List
 
 
