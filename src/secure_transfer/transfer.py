@@ -1,31 +1,42 @@
 """Transfer management module.
 
-Orchestrates staged file transfers with encryption, checksumming,
-and audit trail generation.
+Copies files into a staging directory (the hand-off point for whatever
+actually moves the data, such as SFTP or a cloud copy tool), checks each copy
+against an expected checksum, and keeps an audit trail of what was staged.
+
+The audit trail records values the code computed itself (checksum, size,
+whether the file looks encrypted), not values the caller asserted.
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+import shutil
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+
+from .checksum import ChecksumVerifier
+from .encryptor import looks_like_openpgp_message
 
 
 @dataclass
 class TransferRecord:
-    """Single file transfer record for audit trail."""
+    """Single file record for the audit trail."""
 
     filename: str
-    checksum: str
-    encrypted: bool = False
+    checksum: str  # SHA-256 of the staged copy, computed here
+    encrypted: bool = False  # staged file looks like an OpenPGP message
     timestamp: str = ""
-    status: str = "pending"
+    status: str = "pending"  # staged | checksum_mismatch
+    expected_checksum: str = ""  # as supplied by the caller, if any
+    size_bytes: int = 0
+    source: str = ""
 
 
 @dataclass
 class TransferResult:
-    """Outcome of a transfer operation."""
+    """Outcome of a staging operation."""
 
     total_files: int = 0
     transferred: int = 0
@@ -40,46 +51,83 @@ class TransferResult:
 
 
 class TransferManager:
-    """Manage staged genomic data transfers.
-
-    Produces audit trails recording each file's checksum, encryption
-    status, and transfer timestamp.
+    """Stage files for transfer and keep an audit trail.
 
     Parameters
     ----------
     staging_dir : str or Path
         Directory for staging files before transfer.
+    require_encrypted : bool
+        If True, refuse to stage any file that does not look like an
+        encrypted OpenPGP message. Use this when the staging area leaves
+        your control, so plaintext cannot be staged by mistake.
     """
 
-    def __init__(self, staging_dir: str | Path) -> None:
+    def __init__(self, staging_dir: str | Path, require_encrypted: bool = False) -> None:
         self.staging_dir = Path(staging_dir)
         self.staging_dir.mkdir(parents=True, exist_ok=True)
+        self.require_encrypted = require_encrypted
         self._audit_log: list[TransferRecord] = []
+        self._verifier = ChecksumVerifier("sha256")
 
     def stage_file(
         self,
         source_path: str | Path,
         checksum: str = "",
         encrypted: bool = False,
+        overwrite: bool = False,
     ) -> TransferRecord:
-        """Stage a file for transfer.
+        """Copy a file into the staging directory and record it.
 
-        Copies the file to the staging directory and creates
-        an audit record.
+        Parameters
+        ----------
+        source_path : path
+            File to stage.
+        checksum : str
+            Expected SHA-256 (hex). If given, the staged copy is checked
+            against it and the record's status is ``checksum_mismatch`` when
+            they differ.
+        encrypted : bool
+            Set True to assert the file is encrypted; staging fails if it does
+            not look like an OpenPGP message.
+        overwrite : bool
+            Allow replacing a staged file with the same name.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the source does not exist.
+        FileExistsError
+            If a file with the same name is already staged and ``overwrite``
+            is False.
+        ValueError
+            If the file must be encrypted (by argument or ``require_encrypted``)
+            and does not look encrypted.
         """
         src = Path(source_path)
-        if not src.exists():
+        if not src.is_file():
             raise FileNotFoundError(f"Source file not found: {source_path}")
 
-        dest = self.staging_dir / src.name
-        dest.write_bytes(src.read_bytes())
+        looks_encrypted = looks_like_openpgp_message(src)
+        if (encrypted or self.require_encrypted) and not looks_encrypted:
+            raise ValueError(f"{src.name} does not look like an encrypted OpenPGP message")
 
+        dest = self.staging_dir / src.name
+        if dest.exists() and not overwrite:
+            raise FileExistsError(f"Already staged: {dest.name}")
+        shutil.copyfile(src, dest)  # streams; does not load the file into memory
+
+        actual = self._verifier.compute(dest)
+        expected = checksum.strip().lower()
         record = TransferRecord(
             filename=src.name,
-            checksum=checksum,
-            encrypted=encrypted,
+            checksum=actual,
+            encrypted=looks_encrypted,
             timestamp=datetime.now(UTC).isoformat(),
-            status="staged",
+            status="checksum_mismatch" if expected and expected != actual else "staged",
+            expected_checksum=expected,
+            size_bytes=dest.stat().st_size,
+            source=str(src),
         )
         self._audit_log.append(record)
         return record
@@ -89,34 +137,28 @@ class TransferManager:
         file_paths: list[str | Path],
         checksums: dict[str, str] | None = None,
     ) -> TransferResult:
-        """Stage multiple files."""
+        """Stage multiple files. A file counts as transferred only if it was
+        staged and matched its expected checksum (when one was given)."""
         checksums = checksums or {}
         result = TransferResult(total_files=len(file_paths))
 
         for fp in file_paths:
             try:
-                cksum = checksums.get(str(fp), "")
-                record = self.stage_file(fp, checksum=cksum)
+                record = self.stage_file(fp, checksum=checksums.get(str(fp), ""))
+            except (FileNotFoundError, FileExistsError, PermissionError, ValueError):
+                result.failed.append(str(fp))
+                continue
+            result.records.append(record)
+            if record.status == "staged":
                 result.transferred += 1
-                result.records.append(record)
-            except (FileNotFoundError, PermissionError):
+            else:
                 result.failed.append(str(fp))
 
         return result
 
     def export_audit_trail(self, output_path: str | Path) -> None:
         """Export the audit trail to JSON."""
-        entries = []
-        for rec in self._audit_log:
-            entries.append(
-                {
-                    "filename": rec.filename,
-                    "checksum": rec.checksum,
-                    "encrypted": rec.encrypted,
-                    "timestamp": rec.timestamp,
-                    "status": rec.status,
-                }
-            )
+        entries = [asdict(rec) for rec in self._audit_log]
         with open(output_path, "w") as fh:
             json.dump({"audit_trail": entries}, fh, indent=2)
 
