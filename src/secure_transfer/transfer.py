@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, List
 
 
 @dataclass
@@ -30,8 +29,8 @@ class TransferResult:
 
     total_files: int = 0
     transferred: int = 0
-    failed: List[str] = field(default_factory=list)
-    records: List[TransferRecord] = field(default_factory=list)
+    failed: list[str] = field(default_factory=list)
+    records: list[TransferRecord] = field(default_factory=list)
 
     @property
     def success_rate(self) -> float:
@@ -55,7 +54,7 @@ class TransferManager:
     def __init__(self, staging_dir: str | Path) -> None:
         self.staging_dir = Path(staging_dir)
         self.staging_dir.mkdir(parents=True, exist_ok=True)
-        self._audit_log: List[TransferRecord] = []
+        self._audit_log: list[TransferRecord] = []
 
     def stage_file(
         self,
@@ -79,7 +78,7 @@ class TransferManager:
             filename=src.name,
             checksum=checksum,
             encrypted=encrypted,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             status="staged",
         )
         self._audit_log.append(record)
@@ -87,8 +86,8 @@ class TransferManager:
 
     def stage_batch(
         self,
-        file_paths: List[str | Path],
-        checksums: Dict[str, str] | None = None,
+        file_paths: list[str | Path],
+        checksums: dict[str, str] | None = None,
     ) -> TransferResult:
         """Stage multiple files."""
         checksums = checksums or {}
@@ -109,13 +108,15 @@ class TransferManager:
         """Export the audit trail to JSON."""
         entries = []
         for rec in self._audit_log:
-            entries.append({
-                "filename": rec.filename,
-                "checksum": rec.checksum,
-                "encrypted": rec.encrypted,
-                "timestamp": rec.timestamp,
-                "status": rec.status,
-            })
+            entries.append(
+                {
+                    "filename": rec.filename,
+                    "checksum": rec.checksum,
+                    "encrypted": rec.encrypted,
+                    "timestamp": rec.timestamp,
+                    "status": rec.status,
+                }
+            )
         with open(output_path, "w") as fh:
             json.dump({"audit_trail": entries}, fh, indent=2)
 

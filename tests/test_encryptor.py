@@ -1,7 +1,7 @@
 """Tests for GPGEncryptor and ChecksumVerifier."""
 
-from secure_transfer.encryptor import GPGEncryptor, EncryptionResult
 from secure_transfer.checksum import ChecksumVerifier
+from secure_transfer.encryptor import EncryptionResult, GPGEncryptor
 
 
 class TestGPGEncryptor:

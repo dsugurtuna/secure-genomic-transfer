@@ -8,15 +8,14 @@ from __future__ import annotations
 
 import subprocess
 from dataclasses import dataclass, field
-from typing import List
 
 
 @dataclass
 class EncryptionResult:
     """Outcome of a batch encryption operation."""
 
-    encrypted_files: List[str] = field(default_factory=list)
-    failed_files: List[str] = field(default_factory=list)
+    encrypted_files: list[str] = field(default_factory=list)
+    failed_files: list[str] = field(default_factory=list)
     total_input: int = 0
 
     @property
@@ -49,14 +48,17 @@ class GPGEncryptor:
         self.gpg_binary = gpg_binary
         self.armour = armour
 
-    def _build_encrypt_cmd(self, input_path: str, output_path: str) -> List[str]:
+    def _build_encrypt_cmd(self, input_path: str, output_path: str) -> list[str]:
         cmd = [
             self.gpg_binary,
             "--batch",
             "--yes",
-            "--trust-model", "always",
-            "--recipient", self.recipient,
-            "--output", output_path,
+            "--trust-model",
+            "always",
+            "--recipient",
+            self.recipient,
+            "--output",
+            output_path,
         ]
         if self.armour:
             cmd.append("--armor")
@@ -70,7 +72,7 @@ class GPGEncryptor:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
         return out
 
-    def encrypt_batch(self, file_paths: List[str]) -> EncryptionResult:
+    def encrypt_batch(self, file_paths: list[str]) -> EncryptionResult:
         """Encrypt multiple files."""
         result = EncryptionResult(total_input=len(file_paths))
         for fp in file_paths:
