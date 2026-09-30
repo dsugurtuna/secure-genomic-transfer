@@ -139,7 +139,7 @@ The GnuPG integration tests run when `gpg` is installed and are skipped otherwis
 
 ## Licence
 
-See [LICENSE](LICENSE).
+MIT is declared in `pyproject.toml`, but no licence file is included yet.
 
 ---
 
