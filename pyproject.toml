@@ -8,11 +8,11 @@ version = "1.0.0"
 description = "Encrypted genomic file transfer with checksum verification and audit trails."
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 authors = [{name = "Ugur Tuna"}]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "ruff>=0.4"]
+dev = ["pytest>=8.0", "ruff>=0.16,<0.17", "mypy>=1.10"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -21,5 +21,14 @@ where = ["src"]
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py311"
 line-length = 120
+
+[tool.ruff.lint]
+# Explicit rule set so results do not drift when ruff changes its defaults.
+select = ["E", "W", "F", "I", "UP", "B", "BLE", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]
