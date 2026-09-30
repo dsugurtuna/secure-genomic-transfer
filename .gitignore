@@ -5,3 +5,5 @@ __pycache__/
 build/
 dist/
 .ruff_cache/
+.mypy_cache/
+.venv/
