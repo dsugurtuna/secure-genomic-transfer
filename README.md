@@ -126,13 +126,6 @@ flowchart LR
 - Hash-chained, append-only audit log with actor identity.
 - Optional check that the file decrypts for the intended recipient (`gpg --list-packets`).
 
-## Jira provenance
-
-| Ticket | Description |
-| :--- | :--- |
-| BIOIN-89 | Secure data provisioning pipeline with GPG encryption |
-| BIOIN-405 | AzCopy staging and checksum verification workflows |
-
 ## Development
 
 ```bash
